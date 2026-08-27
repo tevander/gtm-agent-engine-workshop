@@ -1,0 +1,27 @@
+gtm_agent/gtm_agent.py
+  s_12e0640f3c2fa0::t_aec3e8e2911f51 261
+  s_12e0640f3c2fa0::t_bd7c14584a002b 159
+  s_12e0640f3c2fa0::t_bcbc3927645d04 10-12,15,21,24,33,39-99
+.env.example
+  s_12e0640f3c2fa0::t_5ed6e433181982 14-20
+pyproject.toml
+  s_12e0640f3c2fa0::t_b0a9b5848439d1 13
+uv.lock
+  s_12e0640f3c2fa0::t_d02adcce1c2e61 436,454,475-483,499-507,685-708,775-803,1124-1125,1128-1129,1131-1132,1134,1136,2070-2071,2074-2093
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "53c4ffc2fad6634d1b21f767e4f738d592c07dc2",
+  "prompts": {},
+  "sessions": {
+    "s_12e0640f3c2fa0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf646221-b620-4305-90c1-37af0e645e2a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "tevander <tevander@cisco.com>"
+    }
+  }
+}
