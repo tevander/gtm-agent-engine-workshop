@@ -7,18 +7,21 @@ update_prospect_info. The tools call the data-access layer in ``data_service`` f
 storage and retrieval.
 
 Configure credentials via environment variables or a .env file
-(OPENAI_API_KEY, and optionally LANGSMITH_API_KEY / LANGSMITH_PROJECT for
-tracing), then call run_agent(...) with a rep request.
+(CLIENT_ID / CLIENT_SECRET / TOKEN_URL for the Mistral hub's OAuth2
+client-credentials flow, and optionally LANGSMITH_API_KEY / LANGSMITH_PROJECT
+for tracing), then call run_agent(...) with a rep request.
 
 Install:
-    uv add deepagents langchain langgraph langchain-openai langsmith python-dotenv
+    uv add deepagents langchain langgraph langchain-mistralai langsmith python-dotenv
 """
 
 import json
 import os
 import random
+import time
 import uuid
 
+import httpx
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
@@ -27,13 +30,73 @@ os.environ.setdefault("LANGSMITH_TRACING", "true")
 
 from pydantic import BaseModel
 from langchain.tools import tool, ToolRuntime
-from langchain_openai import ChatOpenAI
+from langchain_mistralai import ChatMistralAI
 from deepagents import create_deep_agent
 
 from . import data_service
 from .data_service import REP_IDS
 
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = os.getenv("MODEL_NAME", "mistral-medium-2508")
+
+# ---------------------------------------------------------------------------
+# Auth: OAuth2 client-credentials flow for the Cisco Mistral hub
+# ---------------------------------------------------------------------------
+
+_token_cache: dict = {"access_token": None, "expires_at": 0.0}
+
+
+def _get_access_token() -> str:
+    "Fetch an OAuth2 client-credentials token, refreshing only when near expiry."
+    if _token_cache["access_token"] and time.time() < _token_cache["expires_at"] - 60:
+        return _token_cache["access_token"]
+
+    missing = [v for v in ("CLIENT_ID", "CLIENT_SECRET", "TOKEN_URL") if not os.getenv(v)]
+    if missing:
+        raise EnvironmentError(
+            f"Missing required env vars: {missing}\n"
+            "Fill in CLIENT_ID, CLIENT_SECRET, TOKEN_URL in .env."
+        )
+
+    resp = httpx.post(
+        os.environ["TOKEN_URL"],
+        data={
+            "client_id": os.environ["CLIENT_ID"],
+            "client_secret": os.environ["CLIENT_SECRET"],
+            "grant_type": "client_credentials",
+            "scope": "write",
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    _token_cache["access_token"] = data["access_token"]
+    _token_cache["expires_at"] = time.time() + data.get("expires_in", 3600)
+    return _token_cache["access_token"]
+
+
+_BASE_URL = "https://cxaihub-nprd.cisco.com/mistral-medium/v1"
+
+
+def _make_llm(**kwargs) -> ChatMistralAI:
+    "Build a ChatMistralAI instance, injecting a fresh Bearer token into the httpx clients."
+    token = _get_access_token()
+    base_url = os.getenv("BASE_URL", _BASE_URL)
+
+    auth_headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    timeout = httpx.Timeout(120)
+
+    return ChatMistralAI(
+        model=MODEL_NAME,
+        endpoint=base_url,
+        mistral_api_key=os.environ["CLIENT_ID"],  # satisfies SDK validation; auth is via Bearer token
+        client=httpx.Client(headers=auth_headers, base_url=base_url, timeout=timeout),
+        async_client=httpx.AsyncClient(headers=auth_headers, base_url=base_url, timeout=timeout),
+        **kwargs,
+    )
 
 # ---------------------------------------------------------------------------
 # Tools
@@ -93,7 +156,7 @@ class ProspectScore(BaseModel):
     rubric_breakdown: RubricBreakdown
 
 
-_scoring_llm = ChatOpenAI(model=MODEL_NAME, temperature=0).with_structured_output(ProspectScore)
+_scoring_llm = _make_llm(temperature=0).with_structured_output(ProspectScore)
 
 
 def _offering_has_required_fields(offering):
@@ -195,7 +258,7 @@ SYSTEM_PROMPT = (
     "rep asked for every time."
 )
 
-agent_model = ChatOpenAI(model=MODEL_NAME, temperature=0)
+agent_model = _make_llm(temperature=0)
 
 gtm_agent = create_deep_agent(
     model=agent_model,
