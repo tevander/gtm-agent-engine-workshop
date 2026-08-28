@@ -214,12 +214,16 @@ def get_current_rep(runtime: ToolRuntime) -> dict:
 @tool
 def send_prospect_email(prospect: dict, subject: str, body: str, runtime: ToolRuntime, from_rep: dict | None = None, override_disqualified: bool = False) -> dict:
     "Draft and send an email, blocking disqualified prospects unless override_disqualified is true."
-    if prospect.get("disqualified") and not override_disqualified:
-        return {"status": "blocked", "reason": "Prospect is flagged disqualified; confirm with the rep before sending.", "prospect_id": prospect.get("prospect_id")}
+    prospect_id = prospect.get("prospect_id")
+    record = data_service.get_prospect_record(prospect_id) if prospect_id else None
+    if record is None:
+        return {"status": "failed", "error": "Prospect could not be verified; email was not sent.", "prospect_id": prospect_id}
+    if record.get("disqualified") and not override_disqualified:
+        return {"status": "blocked", "reason": "Prospect is flagged disqualified; confirm with the rep before sending.", "prospect_id": prospect_id}
     if from_rep is None:
         user_id = (runtime.config.get("metadata") or {}).get("user_id")
         from_rep = data_service.get_rep(user_id or "") or {}
-    to_email = prospect.get("email")
+    to_email = record.get("email") or prospect.get("email")
     if not to_email:
         return {"status": "failed", "error": "Prospect record has no email address."}
     message_id = "msg-" + uuid.uuid4().hex[:12]
