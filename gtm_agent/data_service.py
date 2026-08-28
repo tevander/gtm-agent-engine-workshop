@@ -13,7 +13,7 @@ from langsmith import traceable
 from .gtm_records import OFFERINGS, PROSPECTS, REP_IDS
 
 __all__ = [
-    "get_offering", "get_prospect_record", "update_prospect_info",
+    "get_offering", "find_offering_by_name", "get_prospect_record", "update_prospect_info",
     "fetch_engagement_history", "fetch_account_details", "fetch_tech_stack",
     "get_profile_from_db", "save_profile_to_db",
     "get_rep",
@@ -29,6 +29,14 @@ _PROFILES = {}
 def get_offering(offering_id):
     "Return the offering record for offering_id from the CRM, or None if not found."
     return OFFERINGS.get(offering_id)
+
+
+def find_offering_by_name(name):
+    "Return a uniquely named offering and matching candidate names."
+    needle = (name or "").strip().lower()
+    matches = [record for record in OFFERINGS.values() if record["name"].lower() == needle]
+    candidates = [record["name"] for record in matches]
+    return (matches[0] if len(matches) == 1 else None), candidates
 
 
 def get_prospect_record(prospect_id):

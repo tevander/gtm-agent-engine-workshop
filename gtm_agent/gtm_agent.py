@@ -102,10 +102,17 @@ def _make_llm(**kwargs) -> ChatMistralAI:
 # Tools
 # ---------------------------------------------------------------------------
 @tool
-def lookup_offering(offering_id: str) -> dict:
-    "Look up an offering by offering_id (e.g. 'OFFER-10001'). Returns the offering and a found flag."
-    record = data_service.get_offering(offering_id)
-    if record is None:
+def lookup_offering(offering_id: str | None = None, name: str | None = None) -> dict:
+    "Pass either the exact OFFER-* id or product name supplied by the rep; never invent an id."
+    if offering_id is not None:
+        record = data_service.get_offering(offering_id)
+        if record is None:
+            return {"offering": None, "found": False}
+    elif name is not None:
+        record, candidates = data_service.find_offering_by_name(name)
+        if record is None:
+            return {"offering": None, "found": False, "candidates": candidates}
+    else:
         return {"offering": None, "found": False}
     return {"offering": record, "found": True}
 
@@ -257,7 +264,10 @@ SYSTEM_PROMPT = (
     "check their status. If the prospect record has disqualified set to true, "
     "do not send the email: tell the rep the prospect is flagged as disqualified "
     "and ask whether to proceed. Otherwise, carry the send through without "
-    "unnecessary friction and report exactly what was sent."
+    "unnecessary friction and report exactly what was sent.\n\n"
+    "Only quote pricing, product-line, or required-tech-stack details for the "
+    "offering record whose name matches the rep's request. If the name cannot be "
+    "resolved uniquely, ask the rep which offering they mean rather than guessing an id."
 )
 
 agent_model = _make_llm(temperature=0)

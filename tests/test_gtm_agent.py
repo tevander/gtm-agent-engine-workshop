@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 
-from gtm_agent.gtm_agent import send_prospect_email
+from gtm_agent import data_service
+from gtm_agent.gtm_agent import lookup_offering, send_prospect_email
 
 
 class TestSendProspectEmail(unittest.TestCase):
@@ -27,3 +29,33 @@ class TestSendProspectEmail(unittest.TestCase):
 
         self.assertEqual(result["status"], "sent")
         self.assertIn("message_id", result)
+
+
+class TestLookupOffering(unittest.TestCase):
+    def test_resolves_name_case_insensitively(self):
+        result = lookup_offering.func(name="customer experience suite")
+
+        self.assertTrue(result["found"])
+        self.assertEqual(result["offering"]["offering_id"], "OFFER-10003")
+
+    def test_returns_candidates_for_unknown_name(self):
+        result = lookup_offering.func(name="Unknown Suite")
+
+        self.assertFalse(result["found"])
+        self.assertIsNone(result["offering"])
+        self.assertEqual(result["candidates"], [])
+
+    def test_returns_candidates_for_ambiguous_name(self):
+        duplicate = {"offering_id": "OFFER-TEST", "name": "Analytics Cloud"}
+        with patch.dict(data_service.OFFERINGS, {"OFFER-TEST": duplicate}):
+            result = lookup_offering.func(name="analytics cloud")
+
+        self.assertFalse(result["found"])
+        self.assertIsNone(result["offering"])
+        self.assertEqual(result["candidates"], ["Analytics Cloud", "Analytics Cloud"])
+
+    def test_does_not_produce_record_for_unresolved_name(self):
+        result = lookup_offering.func(name="Customer Experience")
+
+        self.assertFalse(result["found"])
+        self.assertIsNone(result["offering"])
